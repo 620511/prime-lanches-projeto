@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { fetchMenu, addMenuItem, updateMenuItem, deleteMenuItem } from './menuApi.js';
+import { fetchMenu, addMenuItem, updateMenuItem, deleteMenuItem, uploadMenuImage } from './menuApi.js';
 import {
   Flame, ShoppingBag, Plus, Minus, X, MapPin, Clock, Banknote,
   QrCode, CreditCard, Check, ChevronRight, ChevronLeft, Star,
@@ -34,7 +34,7 @@ const FONT_BODY = "'Manrope', sans-serif";
 const WHATSAPP_NUMBER = '5585999168937';
 
 /* Delivery-by-distance config — ajuste aqui conforme a realidade da loja */
-const STORE_ADDRESS = 'Rua Doze de Outubro, 711B, Ceará, Brasil';
+const STORE_ADDRESS = 'Rua Doze de Outubro, 711B, Maracanaú, Ceará, Brasil';
 const RATE_PER_KM = 1.5; // R$ por km, sem taxa base (definido por George)
 const MAX_DELIVERY_KM = 12; // além disso, fora da área de entrega
 const MIN_DELIVERY_FEE = 0; // "só por km" — sem piso mínimo
@@ -42,7 +42,7 @@ const MIN_DELIVERY_FEE = 0; // "só por km" — sem piso mínimo
 /* ---------------------------------------------------------------- */
 /* DATA                                                               */
 /* ---------------------------------------------------------------- */
-const CATEGORIES = ['Combos', 'Lanches', 'Porções', 'Bebidas', 'Sobremesas'];
+const CATEGORIES = ['Combos', 'Hambúrguer', 'Porções', 'Bebidas', 'Pastel'];
 const ADMIN_PASSCODE = '1234';
 
 
@@ -248,7 +248,7 @@ export default function PrimeLanches() {
     setGeoStatus('loading');
     clearTimeout(geoDebounce.current);
     geoDebounce.current = setTimeout(async () => {
-      const coords = await geocodeAddress(`${form.address}, Ceará, Brasil`);
+      const coords = await geocodeAddress(`${form.address}, Maracanaú, Ceará, Brasil`);
       if (!coords) { setGeoStatus('error'); setDistanceKm(null); return; }
       const km = haversineKm(storeCoords, coords);
       setDistanceKm(km);
@@ -436,7 +436,9 @@ export default function PrimeLanches() {
           ) : filteredMenu.map((item) => (
             <div key={item.id} className="menu-card" style={{ background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', transition: 'transform 0.2s ease, border-color 0.2s ease', opacity: item.available === false ? 0.55 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ width: 56, height: 56, borderRadius: 12, background: C.emberLight, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>{item.emoji}</div>
+                <div style={{ width: 56, height: 56, borderRadius: 12, background: C.emberLight, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0, overflow: 'hidden' }}>
+                  {item.imageUrl ? <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.emoji}
+                </div>
                 {item.available === false ? (
                   <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em', color: C.creamDim, background: C.emberLight, border: `1px solid ${C.emberBorder}`, borderRadius: 999, padding: '3px 9px' }}>Esgotado</span>
                 ) : item.tag && (
@@ -710,6 +712,17 @@ function AdminPanel({ onExit, onMenuChange }) {
       alert('Não foi possível adicionar o item. Confira a conexão com o Supabase.');
     }
   };
+  const changeImage = async (id, file) => {
+    try {
+      const imageUrl = await uploadMenuImage(file, id);
+      setMenuItems((items) => items.map((m) => (m.id === id ? { ...m, imageUrl } : m)));
+      await updateMenuItem(id, { imageUrl });
+      onMenuChange?.();
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível enviar a foto. Confira se o bucket "menu-images" existe e está público no Supabase.');
+    }
+  };
 
   if (!authed) {
     return (
@@ -744,16 +757,17 @@ function AdminPanel({ onExit, onMenuChange }) {
           <MessageCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>Os pedidos continuam chegando direto no WhatsApp da loja. Esta tela só controla o que aparece no cardápio para o cliente — as mudanças aparecem para todo mundo em poucos segundos.</span>
         </div>
-        <MenuTab items={menuItems} loading={menuLoading} onToggle={toggleAvailable} onPrice={changePrice} onDelete={remove} onAdd={add} />
+        <MenuTab items={menuItems} loading={menuLoading} onToggle={toggleAvailable} onPrice={changePrice} onDelete={remove} onAdd={add} onImage={changeImage} />
       </main>
     </div>
   );
 }
 
-function MenuTab({ items, loading, onToggle, onPrice, onDelete, onAdd }) {
+function MenuTab({ items, loading, onToggle, onPrice, onDelete, onAdd, onImage }) {
   const [form, setForm] = useState({ name: '', desc: '', price: '', cat: CATEGORIES[0], emoji: '🍔', tag: '' });
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pendingImageId, setPendingImageId] = useState(null);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -767,6 +781,13 @@ function MenuTab({ items, loading, onToggle, onPrice, onDelete, onAdd }) {
     setSubmitting(false);
     setForm({ name: '', desc: '', price: '', cat: form.cat, emoji: '🍔', tag: '' });
     setFormError('');
+  };
+
+  const handleImagePick = async (id, file) => {
+    if (!file) return;
+    setPendingImageId(id);
+    await onImage(id, file);
+    setPendingImageId(null);
   };
 
   if (loading) return <div style={{ textAlign: 'center', color: C.creamDim, padding: 40 }}>Carregando cardápio…</div>;
@@ -786,16 +807,17 @@ function MenuTab({ items, loading, onToggle, onPrice, onDelete, onAdd }) {
             style={{ background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '9px 10px', color: C.cream, fontSize: 13 }}>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input value={form.emoji} onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))} placeholder="Emoji 🍔" maxLength={2}
+          <input value={form.emoji} onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))} placeholder="Emoji 🍔 (usado até você enviar uma foto)" maxLength={2}
             style={{ background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '9px 10px', color: C.cream, fontSize: 13 }} />
         </div>
         <input value={form.desc} onChange={(e) => setForm((f) => ({ ...f, desc: e.target.value }))} placeholder="Descrição"
           style={{ width: '100%', background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '9px 10px', color: C.cream, fontSize: 13, marginBottom: 10 }} />
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <input value={form.tag} onChange={(e) => setForm((f) => ({ ...f, tag: e.target.value }))} placeholder="Selo (opcional): Novo, Picante…"
-            style={{ flex: 1, background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '9px 10px', color: C.cream, fontSize: 13 }} />
+            style={{ flex: 1, minWidth: 160, background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '9px 10px', color: C.cream, fontSize: 13 }} />
           <button type="submit" disabled={submitting} style={{ background: `linear-gradient(180deg, ${C.goldLight}, ${C.gold})`, color: C.charcoal, border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: submitting ? 0.6 : 1 }}><Plus size={14} /> {submitting ? 'Adicionando…' : 'Adicionar'}</button>
         </div>
+        <div style={{ fontSize: 11.5, color: C.creamDim, marginTop: 8 }}>A foto do produto se envia depois de criado — adiciona aqui e depois clica em "Foto" na lista abaixo.</div>
         {formError && <div style={{ color: C.redGlow, fontSize: 12, marginTop: 8 }}>{formError}</div>}
       </form>
 
@@ -804,8 +826,10 @@ function MenuTab({ items, loading, onToggle, onPrice, onDelete, onAdd }) {
           <h4 style={{ fontFamily: FONT_DISPLAY, fontSize: 14, letterSpacing: '0.03em', color: C.creamDim, margin: '0 0 10px' }}>{cat.toUpperCase()}</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {catItems.map((item) => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 10, padding: '10px 12px', opacity: item.available === false ? 0.55 : 1 }}>
-                <span style={{ fontSize: 22 }}>{item.emoji}</span>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 10, padding: '10px 12px', opacity: item.available === false ? 0.55 : 1, flexWrap: 'wrap' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: C.emberLight, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                  {item.imageUrl ? <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.emoji}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
                   <div style={{ fontSize: 11.5, color: C.creamDim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.desc}</div>
@@ -817,6 +841,15 @@ function MenuTab({ items, loading, onToggle, onPrice, onDelete, onAdd }) {
                     if (!isNaN(v) && v > 0) onPrice(item.id, v);
                   }} style={{ width: 64, background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 6, padding: '5px 6px', color: C.cream, fontSize: 12.5 }} />
                 </div>
+                <label style={{
+                  flexShrink: 0, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '6px 10px', cursor: 'pointer',
+                  border: `1px solid ${C.emberBorder}`, color: C.creamDim, display: 'flex', alignItems: 'center', gap: 4,
+                  opacity: pendingImageId === item.id ? 0.5 : 1,
+                }}>
+                  {pendingImageId === item.id ? 'Enviando…' : (item.imageUrl ? 'Trocar foto' : 'Foto')}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={pendingImageId === item.id}
+                    onChange={(e) => handleImagePick(item.id, e.target.files?.[0])} />
+                </label>
                 <button onClick={() => onToggle(item)} style={{
                   flexShrink: 0, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '6px 10px',
                   border: `1px solid ${item.available === false ? C.gold : C.emberBorder}`,
