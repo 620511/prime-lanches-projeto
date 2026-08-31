@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient.js';
 
+const IMAGE_BUCKET = 'menu-images';
+
 function fromDb(row) {
   return {
     id: row.id,
@@ -10,6 +12,7 @@ function fromDb(row) {
     emoji: row.emoji,
     tag: row.tag,
     available: row.available,
+    imageUrl: row.image_url || null,
   };
 }
 
@@ -23,7 +26,20 @@ function toDb(item) {
     emoji: item.emoji,
     tag: item.tag,
     available: item.available,
+    image_url: item.imageUrl ?? null,
   };
+}
+
+export async function uploadMenuImage(file, itemId) {
+  const ext = file.name.split('.').pop();
+  const path = `${itemId}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from(IMAGE_BUCKET).upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function fetchMenu() {
@@ -49,6 +65,7 @@ export async function updateMenuItem(id, fields) {
   if ('available' in fields) row.available = fields.available;
   if ('desc' in fields) row.description = fields.desc;
   if ('name' in fields) row.name = fields.name;
+  if ('imageUrl' in fields) row.image_url = fields.imageUrl;
   const { error } = await supabase.from('menu').update(row).eq('id', id);
   if (error) throw error;
 }
