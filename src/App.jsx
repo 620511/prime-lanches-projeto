@@ -33,12 +33,6 @@ const FONT_BODY = "'Manrope', sans-serif";
 /* Pedido vai direto pro WhatsApp da loja — sem backend, sem banco de dados */
 const WHATSAPP_NUMBER = '5585999168937';
 
-/* Delivery-by-distance config — ajuste aqui conforme a realidade da loja */
-const STORE_ADDRESS = 'Rua Doze de Outubro, 711B, Maracanaú, Ceará, Brasil';
-const RATE_PER_KM = 1.5; // R$ por km, sem taxa base (definido por George)
-const MAX_DELIVERY_KM = 12; // além disso, fora da área de entrega
-const MIN_DELIVERY_FEE = 0; // "só por km" — sem piso mínimo
-
 /* ---------------------------------------------------------------- */
 /* DATA                                                               */
 /* ---------------------------------------------------------------- */
@@ -55,37 +49,6 @@ const PAYMENTS = [
 const money = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 /* ---------------------------------------------------------------- */
-/* GEOCODING + DISTANCE (OpenStreetMap Nominatim — sem chave de API) */
-/* ---------------------------------------------------------------- */
-async function geocodeAddress(query) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`;
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || !data.length) return null;
-    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
-  } catch {
-    return null;
-  }
-}
-
-function haversineKm(a, b) {
-  const R = 6371;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
-  const lat1 = (a.lat * Math.PI) / 180;
-  const lat2 = (b.lat * Math.PI) / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function calcDeliveryFee(km) {
-  const raw = km * RATE_PER_KM;
-  return Math.max(MIN_DELIVERY_FEE, Math.round(raw * 10) / 10);
-}
-
-/* ---------------------------------------------------------------- */
 /* WHATSAPP ORDER MESSAGE                                             */
 /* ---------------------------------------------------------------- */
 function buildWhatsAppMessage(order) {
@@ -96,7 +59,7 @@ function buildWhatsAppMessage(order) {
   lines.push('');
   lines.push(`Subtotal: ${money(order.subtotal)}`);
   if (order.orderType === 'entrega') {
-    lines.push(`Taxa de entrega${order.distanceKm != null ? ` (${order.distanceKm.toFixed(1)} km)` : ''}: ${money(order.deliveryFee)}`);
+    lines.push('Taxa de entrega: a combinar com a loja');
   }
   lines.push(`*Total: ${money(order.total)}*`);
   lines.push('');
@@ -219,11 +182,6 @@ export default function PrimeLanches() {
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
-  const [storeCoords, setStoreCoords] = useState(null);
-  const [distanceKm, setDistanceKm] = useState(null);
-  const [geoStatus, setGeoStatus] = useState('idle'); // idle | loading | ok | error | far
-  const geoDebounce = useRef(null);
-
   const [menuItems, setMenuItems] = useState([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const menuPollRef = useRef(null);
@@ -236,25 +194,7 @@ export default function PrimeLanches() {
     return () => clearInterval(menuPollRef.current);
   }, []);
 
-  useEffect(() => { geocodeAddress(STORE_ADDRESS).then(setStoreCoords); }, []);
-  useEffect(() => () => { clearTimeout(toastTimer.current); clearTimeout(geoDebounce.current); }, []);
-
-  useEffect(() => {
-    if (orderType !== 'entrega' || !form.address.trim() || !storeCoords) {
-      setDistanceKm(null);
-      setGeoStatus('idle');
-      return;
-    }
-    setGeoStatus('loading');
-    clearTimeout(geoDebounce.current);
-    geoDebounce.current = setTimeout(async () => {
-      const coords = await geocodeAddress(`${form.address}, Maracanaú, Ceará, Brasil`);
-      if (!coords) { setGeoStatus('error'); setDistanceKm(null); return; }
-      const km = haversineKm(storeCoords, coords);
-      setDistanceKm(km);
-      setGeoStatus(km > MAX_DELIVERY_KM ? 'far' : 'ok');
-    }, 900);
-  }, [form.address, orderType, storeCoords]);
+  useEffect(() => () => { clearTimeout(toastTimer.current); }, []);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -280,8 +220,7 @@ export default function PrimeLanches() {
   , [cart, menuItems]);
 
   const subtotal = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
-  const deliveryFee = orderType === 'entrega' && distanceKm != null && geoStatus === 'ok' ? calcDeliveryFee(distanceKm) : 0;
-  const total = subtotal + deliveryFee;
+  const total = subtotal;
   const cartCount = cartItems.reduce((s, i) => s + i.qty, 0);
 
   const filteredMenu = useMemo(() => {
@@ -296,7 +235,7 @@ export default function PrimeLanches() {
 
   const canGoInfo = cartItems.length > 0;
   const canGoPayment = form.name.trim() && form.phone.trim() &&
-    (orderType === 'retirada' || (form.address.trim() && geoStatus === 'ok'));
+    (orderType === 'retirada' || form.address.trim());
 
   const confirmOrder = () => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -307,7 +246,7 @@ export default function PrimeLanches() {
       customer: { ...form },
       orderType,
       items: cartItems.map((i) => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
-      subtotal, deliveryFee, total, distanceKm: orderType === 'entrega' ? distanceKm : null,
+      subtotal, total,
       payment,
     };
     setSentOrder(order);
@@ -552,24 +491,9 @@ export default function PrimeLanches() {
                   {orderType === 'entrega' && (
                     <>
                       <Field label="Endereço" value={form.address} onChange={(v) => setForm((f) => ({ ...f, address: v }))} placeholder="Rua, número, bairro" icon={MapPin} />
-                      {geoStatus === 'loading' && (
-                        <div style={{ fontSize: 12, color: C.creamDim, display: 'flex', alignItems: 'center', gap: 6 }}>Calculando distância…</div>
-                      )}
-                      {geoStatus === 'ok' && distanceKm != null && (
-                        <div style={{ fontSize: 12.5, color: C.goldLight, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <MapPin size={13} /> {distanceKm.toFixed(1)} km da loja · taxa de {money(calcDeliveryFee(distanceKm))}
-                        </div>
-                      )}
-                      {geoStatus === 'far' && distanceKm != null && (
-                        <div style={{ fontSize: 12.5, color: C.redGlow, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <AlertTriangle size={13} /> {distanceKm.toFixed(1)} km — fora da área de entrega ({MAX_DELIVERY_KM} km)
-                        </div>
-                      )}
-                      {geoStatus === 'error' && (
-                        <div style={{ fontSize: 12.5, color: C.redGlow, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <AlertTriangle size={13} /> Não encontramos esse endereço. Tente incluir bairro e cidade.
-                        </div>
-                      )}
+                      <div style={{ fontSize: 12, color: C.creamDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <AlertTriangle size={13} /> Taxa de entrega combinada direto com a loja no WhatsApp
+                      </div>
                       <Field label="Complemento (opcional)" value={form.complement} onChange={(v) => setForm((f) => ({ ...f, complement: v }))} placeholder="Apto, bloco, referência" />
                     </>
                   )}
@@ -638,9 +562,9 @@ export default function PrimeLanches() {
               <div style={{ borderTop: `1px solid ${C.emberBorder}`, padding: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.creamDim, marginBottom: 4 }}><span>Subtotal</span><span>{money(subtotal)}</span></div>
                 {orderType === 'entrega' && step !== 'cart' && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.creamDim, marginBottom: 4 }}><span>Taxa de entrega</span><span>{money(deliveryFee)}</span></div>
+                  <div style={{ fontSize: 11.5, color: C.creamDim, marginBottom: 4 }}>Taxa de entrega: a combinar no WhatsApp</div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, margin: '8px 0 14px' }}><span>Total</span><span style={{ color: C.goldLight }}>{money(step === 'cart' ? subtotal : total)}</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, margin: '8px 0 14px' }}><span>Total</span><span style={{ color: C.goldLight }}>{money(total)}</span></div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   {step !== 'cart' && (
                     <button onClick={() => setStep(step === 'payment' ? 'info' : 'cart')} style={{ flexShrink: 0, background: C.ember, border: `1px solid ${C.emberBorder}`, color: C.cream, borderRadius: 12, padding: '13px 16px', fontWeight: 700, display: 'flex', alignItems: 'center' }}><ChevronLeft size={18} /></button>
