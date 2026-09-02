@@ -37,7 +37,7 @@ const WHATSAPP_NUMBER = '5585999168937';
 /* DATA                                                               */
 /* ---------------------------------------------------------------- */
 const CATEGORIES = ['Combos', 'Hambúrguer', 'Porções', 'Bebidas', 'Pastel'];
-const ADMIN_PASSCODE = '1234';
+const ADMIN_PASSCODE = '2030';
 
 
 const PAYMENTS = [
