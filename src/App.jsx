@@ -82,47 +82,17 @@ function whatsappLink(order) {
 /* LOGO                                                               */
 /* ---------------------------------------------------------------- */
 function PrimeLogo({ size = 'md' }) {
-  const dims = size === 'lg'
-    ? { badge: 220, flame: 46, title: 40, ribbon: 15, sub: 11 }
-    : { badge: 62, flame: 16, title: 13, ribbon: 6, sub: 5 };
+  const dims = size === 'lg' ? 220 : 62;
   const isLg = size === 'lg';
   return (
-    <div style={{ position: 'relative', width: dims.badge, filter: isLg ? 'drop-shadow(0 12px 30px rgba(184,35,42,0.35))' : 'none' }}>
-      <svg viewBox="0 0 200 220" width="100%" height="auto" style={{ display: 'block' }}>
-        <defs>
-          <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.goldLight} />
-            <stop offset="55%" stopColor={C.gold} />
-            <stop offset="100%" stopColor={C.goldDim} />
-          </linearGradient>
-        </defs>
-        <path d="M100 8 L186 34 V110 C186 162 150 198 100 214 C50 198 14 162 14 110 V34 Z"
-          fill={C.charcoal} stroke="url(#goldGrad)" strokeWidth="4" />
-        <path d="M100 20 L174 42 V108 C174 154 144 184 100 199 C56 184 26 154 26 108 V42 Z"
-          fill="none" stroke="url(#goldGrad)" strokeWidth="1.5" opacity="0.6" />
-      </svg>
-      <div style={{ position: 'absolute', top: '4%', left: '50%', transform: 'translateX(-50%)', fontSize: dims.flame, animation: 'flicker 2.4s ease-in-out infinite' }}>🔥</div>
-      <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)', fontSize: dims.flame * 1.3 }}>🍔</div>
-      <div style={{ position: 'absolute', top: '52%', left: '50%', transform: 'translateX(-50%)', width: '84%', textAlign: 'center' }}>
-        <div style={{
-          fontFamily: FONT_DISPLAY, fontSize: dims.title, lineHeight: 0.9, letterSpacing: '0.02em',
-          background: 'linear-gradient(180deg, #ffe6a8 0%, #f2b13a 55%, #c98f2c 100%)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          filter: 'drop-shadow(0 2px 0 rgba(0,0,0,0.5))',
-        }}>PRIME</div>
-        <div style={{
-          marginTop: dims.title * 0.12, background: C.red, color: C.cream,
-          fontFamily: FONT_DISPLAY, fontSize: dims.ribbon, letterSpacing: '0.12em',
-          padding: isLg ? '4px 10px' : '1px 4px', display: 'inline-block',
-          clipPath: 'polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%)',
-        }}>LANCHES</div>
-        {isLg && (
-          <div style={{ marginTop: 8, color: C.creamDim, fontSize: dims.sub, letterSpacing: '0.3em', fontWeight: 700 }}>
-            ★ ★ ★ &nbsp; O MELHOR!
-          </div>
-        )}
-      </div>
-    </div>
+    <img
+      src="/logo.jpg"
+      alt="Prime Lanches"
+      style={{
+        width: dims, height: dims, borderRadius: '50%', display: 'block',
+        filter: isLg ? 'drop-shadow(0 12px 30px rgba(184,35,42,0.35))' : 'none',
+      }}
+    />
   );
 }
 
@@ -411,7 +381,7 @@ export default function PrimeLanches() {
       </main>
 
       <footer style={{ borderTop: `1px solid ${C.emberBorder}`, padding: '28px 20px', textAlign: 'center', color: C.creamDim, fontSize: 12.5 }}>
-        <div>Prime Lanches · O MELHOR! — pedidos online todos os dias, 15h às 20h00</div>
+        <div>Prime Lanches · O MELHOR! — pedidos online todos os dias, 15h às 22h</div>
         <button onClick={() => setView('admin')} style={{ marginTop: 10, background: 'transparent', border: 'none', color: C.creamDim, fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 5, opacity: 0.7 }}>
           <Store size={13} /> Área da loja
         </button>
