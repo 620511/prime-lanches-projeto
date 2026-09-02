@@ -411,7 +411,7 @@ export default function PrimeLanches() {
       </main>
 
       <footer style={{ borderTop: `1px solid ${C.emberBorder}`, padding: '28px 20px', textAlign: 'center', color: C.creamDim, fontSize: 12.5 }}>
-        <div>Prime Lanches · O MELHOR! — pedidos online todos os dias, 18h às 23h30</div>
+        <div>Prime Lanches · O MELHOR! — pedidos online todos os dias, 15h às 20h00</div>
         <button onClick={() => setView('admin')} style={{ marginTop: 10, background: 'transparent', border: 'none', color: C.creamDim, fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 5, opacity: 0.7 }}>
           <Store size={13} /> Área da loja
         </button>
