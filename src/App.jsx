@@ -48,7 +48,7 @@ const ADMIN_PASSCODE = '2030';
 const PAYMENTS = [
   { id: 'pix', label: 'Pix', icon: QrCode, hint: 'Combinar chave com a loja no WhatsApp' },
   { id: 'card', label: 'Cartão na entrega', icon: CreditCard, hint: 'Crédito ou débito na maquininha' },
-  { id: 'cash', label: 'Dinheiro', icon: Banknote, hint: 'Informe se precisa de troco' },
+  { id: 'cash', label: 'Dinheiro', icon: Banknote, hint: 'Troco combinado com o entregador' },
 ];
 
 const money = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -232,7 +232,7 @@ function buildWhatsAppMessage(order) {
   } else if (order.payment === 'card') {
     linhas.push('Vou pagar na maquininha, na entrega — combinado?');
   } else if (order.payment === 'cash') {
-    linhas.push(`Vou pagar em dinheiro. ${order.customer?.troco || 'Não precisa de troco'}.`);
+    linhas.push('Vou pagar em dinheiro — precisa de troco para quanto?');
   }
   return linhas.join('\n');
 }
@@ -315,8 +315,6 @@ export default function PrimeLanches() {
   const [orderType, setOrderType] = useState('entrega');
   const [form, setForm] = useState({ name: '', phone: '', address: '', complement: '', notes: '' });
   const [payment, setPayment] = useState('pix');
-  const [precisaTroco, setPrecisaTroco] = useState(null); // null | true | false
-  const [trocoValor, setTrocoValor] = useState('');
   const [sentOrder, setSentOrder] = useState(null);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -375,10 +373,6 @@ export default function PrimeLanches() {
   const canGoInfo = cartItems.length > 0;
   const canGoPayment = form.name.trim() && form.phone.trim() &&
     (orderType === 'retirada' || form.address.trim());
-  const canConfirmOrder =
-    payment !== 'cash' ||
-    precisaTroco === false ||
-    (precisaTroco === true && trocoValor.trim() !== '' && Number(trocoValor) > 0);
 
   const confirmOrder = async () => {
   const id =
@@ -389,12 +383,7 @@ export default function PrimeLanches() {
     id,
     number: 'PL' + id.slice(-4).toUpperCase(),
     createdAt: new Date().toISOString(),
-    customer: {
-      ...form,
-      troco: payment === 'cash'
-        ? (precisaTroco ? `Troco para ${money(Number(trocoValor))}` : 'Não precisa de troco')
-        : undefined,
-    },
+    customer: { ...form },
     orderType,
     items: cartItems.map((i) => ({
       id: i.id,
@@ -440,9 +429,6 @@ export default function PrimeLanches() {
     setCartOpen(false);
     setSentOrder(null);
     setForm({ name: '', phone: '', address: '', complement: '', notes: '' });
-    setPayment('pix');
-    setPrecisaTroco(null);
-    setTrocoValor('');
   };
 
   if (view === 'admin') {
@@ -508,9 +494,9 @@ export default function PrimeLanches() {
             fontFamily: FONT_DISPLAY, fontSize: 'clamp(38px, 6vw, 64px)', lineHeight: 0.95, margin: 0,
             background: 'linear-gradient(180deg, #ffe6a8, #f2b13a 60%, #c98f2c)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>O SABOR QUE<br />CONQUISTA.</h1>
+          }}>O SABOR QUE<br />PEGA FOGO.</h1>
           <p style={{ color: C.creamDim, fontSize: 16, lineHeight: 1.6, margin: '18px 0 26px', maxWidth: 440 }}>
-            PRIME LANCHES, O SABOR QUE CONQUISTA.
+            Burgers artesanais, blend na hora e molhos exclusivos. Monte seu pedido no site e confirme o pagamento direto com a loja.
           </p>
           <button onClick={() => scrollToCat('Combos')} style={{
             background: `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})`, color: C.cream, border: 'none',
@@ -691,7 +677,7 @@ export default function PrimeLanches() {
               {step === 'payment' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {PAYMENTS.map((p) => (
-                    <button key={p.id} onClick={() => { setPayment(p.id); if (p.id !== 'cash') { setPrecisaTroco(null); setTrocoValor(''); } }} style={{
+                    <button key={p.id} onClick={() => setPayment(p.id)} style={{
                       display: 'flex', alignItems: 'center', gap: 12, padding: '14px', borderRadius: 12, textAlign: 'left',
                       border: `1.5px solid ${payment === p.id ? C.gold : C.emberBorder}`,
                       background: payment === p.id ? 'rgba(242,177,58,0.1)' : 'transparent',
@@ -704,47 +690,6 @@ export default function PrimeLanches() {
                       {payment === p.id && <Check size={18} color={C.gold} />}
                     </button>
                   ))}
-
-                  {payment === 'cash' && (
-                    <div style={{ background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 12, padding: 14 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>Precisa de troco?</div>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: precisaTroco ? 10 : 0 }}>
-                        <button
-                          onClick={() => setPrecisaTroco(true)}
-                          style={{
-                            flex: 1, padding: '10px', borderRadius: 10, fontWeight: 700, fontSize: 13,
-                            border: `1.5px solid ${precisaTroco === true ? C.gold : C.emberBorder}`,
-                            background: precisaTroco === true ? 'rgba(242,177,58,0.1)' : 'transparent',
-                            color: C.cream,
-                          }}
-                        >Sim</button>
-                        <button
-                          onClick={() => { setPrecisaTroco(false); setTrocoValor(''); }}
-                          style={{
-                            flex: 1, padding: '10px', borderRadius: 10, fontWeight: 700, fontSize: 13,
-                            border: `1.5px solid ${precisaTroco === false ? C.gold : C.emberBorder}`,
-                            background: precisaTroco === false ? 'rgba(242,177,58,0.1)' : 'transparent',
-                            color: C.cream,
-                          }}
-                        >Não</button>
-                      </div>
-                      {precisaTroco === true && (
-                        <div>
-                          <div style={{ fontSize: 12, color: C.creamDim, marginBottom: 6 }}>Troco para quanto?</div>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min="0"
-                            step="0.01"
-                            value={trocoValor}
-                            onChange={(e) => setTrocoValor(e.target.value)}
-                            placeholder="Ex: 50"
-                            style={{ width: '100%', background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 10, padding: '11px', color: C.cream, fontSize: 14 }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
                   <div style={{ fontSize: 11.5, color: C.creamDim, background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 10, padding: 10, display: 'flex', gap: 8 }}>
                     <MessageCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
                     <span>Ao confirmar, seu pedido é registrado no sistema da loja (com todos os itens e endereço). Você será direcionado ao WhatsApp só para confirmar a forma de pagamento.</span>
@@ -798,7 +743,7 @@ export default function PrimeLanches() {
                     <button disabled={!canGoPayment} onClick={() => setStep('payment')} style={{ flex: 1, background: canGoPayment ? `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})` : C.emberBorder, color: canGoPayment ? C.cream : C.creamDim, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Ir para pagamento <ChevronRight size={16} /></button>
                   )}
                   {step === 'payment' && (
-                    <button disabled={!canConfirmOrder} onClick={confirmOrder} style={{ flex: 1, background: canConfirmOrder ? `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})` : C.emberBorder, color: canConfirmOrder ? C.cream : C.creamDim, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <button onClick={confirmOrder} style={{ flex: 1, background: `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})`, color: C.cream, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <Check size={16} /> Confirmar pedido
                     </button>
                   )}
@@ -1121,7 +1066,6 @@ function OrdersTab({ orders, loading, onRefresh, onStatus, pedidosNovosIds, onDe
       lines.push(`Endereço: ${order.customer?.address || ''}${order.customer?.complement ? `, ${order.customer.complement}` : ''}`);
     }
     lines.push(`Pagamento: ${order.payment_label || order.payment || ''}`);
-    if (order.customer?.troco) lines.push(`Troco: ${order.customer.troco}`);
     if (order.customer?.notes) lines.push(`Obs: ${order.customer.notes}`);
     return lines.join('\n');
   };
@@ -1187,9 +1131,6 @@ function OrdersTab({ orders, loading, onRefresh, onStatus, pedidosNovosIds, onDe
             <div><b style={{ color: C.cream }}>Telefone:</b> {order.customer?.phone}</div>
             {order.order_type === 'entrega' && <div><b style={{ color: C.cream }}>Endereço:</b> {order.customer?.address}{order.customer?.complement ? `, ${order.customer.complement}` : ''}</div>}
             <div><b style={{ color: C.cream }}>Pagamento:</b> {order.payment_label || order.payment}</div>
-            {order.customer?.troco && (
-              <div><b style={{ color: C.gold }}>Troco:</b> <span style={{ color: C.goldLight, fontWeight: 700 }}>{order.customer.troco}</span></div>
-            )}
             {order.customer?.notes && <div><b style={{ color: C.cream }}>Obs:</b> {order.customer.notes}</div>}
           </div>
 
