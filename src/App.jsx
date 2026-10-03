@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   fetchMenu, addMenuItem, updateMenuItem, deleteMenuItem, uploadMenuImage,
   createOrder, fetchOrders, updateOrderStatus, assinarNovosPedidos,
-  deleteOrder, fetchOrdersParaRelatorio
+  deleteOrder, fetchOrdersParaRelatorio, fetchOrderById, assinarPedido
 } from './menuApi.js';
 import {
   Flame, ShoppingBag, Plus, Minus, X, MapPin, Clock, Banknote,
@@ -48,7 +48,7 @@ const ADMIN_PASSCODE = '2030';
 const PAYMENTS = [
   { id: 'pix', label: 'Pix', icon: QrCode, hint: 'Combinar chave com a loja no WhatsApp' },
   { id: 'card', label: 'Cartão na entrega', icon: CreditCard, hint: 'Crédito ou débito na maquininha' },
-  { id: 'cash', label: 'Dinheiro', icon: Banknote, hint: 'Troco combinado com o entregador' },
+  { id: 'cash', label: 'Dinheiro', icon: Banknote, hint: 'Informe se precisa de troco' },
 ];
 
 const money = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -104,6 +104,107 @@ function falarPedidoNovo(pedido) {
   const cliente = pedido.customer?.name || 'cliente';
   const texto = `Novo pedido! Número ${pedido.number}, cliente ${cliente}. ${nomesItens}. Total de ${valorFalado(pedido.total)}.`;
   falar(texto);
+}
+
+/* ---------------------------------------------------------------- */
+/* ACOMPANHAMENTO DO PEDIDO — visão do cliente                       */
+/* ---------------------------------------------------------------- */
+
+const PASSOS_PEDIDO_CLIENTE = [
+  { status: 'novo', label: 'Recebido', emoji: '📝' },
+  { status: 'preparando', label: 'Em preparo', emoji: '👨‍🍳' },
+  { status: 'pronto', label: 'Pronto', emoji: '📦' },
+  { status: 'entregue', label: 'Entregue', emoji: '✅' },
+];
+
+function falarStatusPedidoCliente(status) {
+  const mensagens = {
+    preparando: 'Seu pedido entrou em preparo!',
+    pronto: 'Seu pedido está pronto!',
+    entregue: 'Pedido entregue. Bom apetite!',
+    cancelado: 'Seu pedido foi cancelado pela loja.',
+  };
+  if (mensagens[status]) falar(mensagens[status]);
+}
+
+function AcompanharPedido({ orderId, onAtualizarStatus }) {
+  const [pedido, setPedido] = useState(null);
+  const statusAnteriorRef = useRef(null);
+
+  useEffect(() => {
+    let ativo = true;
+    let cancelar = () => {};
+
+    // Tudo aqui dentro é blindado: se alguma parte falhar (rede, Supabase,
+    // incompatibilidade de versão de arquivo), o acompanhamento simplesmente
+    // não aparece — nunca derruba o resto da página.
+    (async () => {
+      try {
+        const p = await fetchOrderById(orderId);
+        if (ativo && p) { setPedido(p); statusAnteriorRef.current = p.status; }
+      } catch (e) {
+        console.error('Erro ao buscar status do pedido:', e);
+      }
+      try {
+        cancelar = assinarPedido(orderId, (atualizado) => {
+          setPedido(atualizado);
+          if (atualizado.status !== statusAnteriorRef.current) {
+            falarStatusPedidoCliente(atualizado.status);
+            onAtualizarStatus?.(atualizado.status);
+          }
+          statusAnteriorRef.current = atualizado.status;
+        });
+      } catch (e) {
+        console.error('Erro ao assinar atualizações do pedido:', e);
+      }
+    })();
+
+    return () => { ativo = false; try { cancelar(); } catch (e) {} };
+  }, [orderId]);
+
+  if (!pedido) return null;
+
+  if (pedido.status === 'cancelado') {
+    return (
+      <div style={{ background: C.ember, border: `1px solid ${C.redGlow}`, borderRadius: 14, padding: 16, marginTop: 16 }}>
+        <div style={{ fontWeight: 800, color: C.redGlow, fontSize: 14 }}>❌ Pedido cancelado</div>
+        <div style={{ fontSize: 12.5, color: C.creamDim, marginTop: 4 }}>
+          Esse pedido foi cancelado pela loja. Qualquer dúvida, fale com a gente pelo WhatsApp.
+        </div>
+      </div>
+    );
+  }
+
+  const indiceAtual = PASSOS_PEDIDO_CLIENTE.findIndex((p) => p.status === pedido.status);
+
+  return (
+    <div style={{ background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 14, padding: 16, marginTop: 16 }}>
+      <div style={{ fontWeight: 800, fontSize: 13.5, color: C.goldLight, marginBottom: 14 }}>📍 Acompanhe seu pedido</div>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {PASSOS_PEDIDO_CLIENTE.map((passo, i) => {
+          const concluido = i <= indiceAtual;
+          return (
+            <div key={passo.status} style={{ display: 'flex', alignItems: 'center', flex: i < PASSOS_PEDIDO_CLIENTE.length - 1 ? 1 : 'none' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: concluido ? `linear-gradient(180deg, ${C.goldLight}, ${C.gold})` : C.voidDeep,
+                  border: concluido ? 'none' : `1px solid ${C.emberBorder}`,
+                  fontSize: 15,
+                }}>{passo.emoji}</div>
+                <span style={{ fontSize: 10, color: concluido ? C.goldLight : C.creamDim, fontWeight: concluido ? 700 : 400, whiteSpace: 'nowrap' }}>
+                  {passo.label}
+                </span>
+              </div>
+              {i < PASSOS_PEDIDO_CLIENTE.length - 1 && (
+                <div style={{ flex: 1, height: 2, background: i < indiceAtual ? C.gold : C.emberBorder, margin: '0 4px 16px' }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 /* JARVIS responde por regras — ele consulta os pedidos que já estão
@@ -232,7 +333,7 @@ function buildWhatsAppMessage(order) {
   } else if (order.payment === 'card') {
     linhas.push('Vou pagar na maquininha, na entrega — combinado?');
   } else if (order.payment === 'cash') {
-    linhas.push('Vou pagar em dinheiro — precisa de troco para quanto?');
+    linhas.push(`Vou pagar em dinheiro. ${order.customer?.troco || 'Não precisa de troco'}.`);
   }
   return linhas.join('\n');
 }
@@ -315,6 +416,8 @@ export default function PrimeLanches() {
   const [orderType, setOrderType] = useState('entrega');
   const [form, setForm] = useState({ name: '', phone: '', address: '', complement: '', notes: '' });
   const [payment, setPayment] = useState('pix');
+  const [precisaTroco, setPrecisaTroco] = useState(null); // null | true | false
+  const [trocoValor, setTrocoValor] = useState('');
   const [sentOrder, setSentOrder] = useState(null);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -332,6 +435,34 @@ export default function PrimeLanches() {
   }, []);
 
   useEffect(() => () => { clearTimeout(toastTimer.current); }, []);
+
+  // Se o cliente saiu e voltou na página, tenta restaurar o
+  // acompanhamento do último pedido (enquanto ele não foi
+  // entregue/cancelado).
+  useEffect(() => {
+    const salvo = localStorage.getItem('pl_pedido_acompanhar');
+    if (!salvo) return;
+    try {
+      const { id } = JSON.parse(salvo);
+      fetchOrderById(id)
+        .then((pedido) => {
+          if (!pedido) { localStorage.removeItem('pl_pedido_acompanhar'); return; }
+          if (pedido.status === 'entregue' || pedido.status === 'cancelado') {
+            localStorage.removeItem('pl_pedido_acompanhar');
+            return;
+          }
+          setSentOrder({
+            id: pedido.id,
+            number: pedido.number,
+            items: pedido.items,
+            total: pedido.total,
+          });
+        })
+        .catch(() => {});
+    } catch (e) {
+      localStorage.removeItem('pl_pedido_acompanhar');
+    }
+  }, []);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -373,6 +504,10 @@ export default function PrimeLanches() {
   const canGoInfo = cartItems.length > 0;
   const canGoPayment = form.name.trim() && form.phone.trim() &&
     (orderType === 'retirada' || form.address.trim());
+  const canConfirmOrder =
+    payment !== 'cash' ||
+    precisaTroco === false ||
+    (precisaTroco === true && trocoValor.trim() !== '' && Number(trocoValor) > 0);
 
   const confirmOrder = async () => {
   const id =
@@ -383,7 +518,12 @@ export default function PrimeLanches() {
     id,
     number: 'PL' + id.slice(-4).toUpperCase(),
     createdAt: new Date().toISOString(),
-    customer: { ...form },
+    customer: {
+      ...form,
+      troco: payment === 'cash'
+        ? (precisaTroco ? `Troco para ${money(Number(trocoValor))}` : 'Não precisa de troco')
+        : undefined,
+    },
     orderType,
     items: cartItems.map((i) => ({
       id: i.id,
@@ -411,6 +551,7 @@ export default function PrimeLanches() {
 
     setSentOrder(order);
     setStep('sent');
+    localStorage.setItem('pl_pedido_acompanhar', JSON.stringify({ id: order.id, number: order.number }));
   } catch (e) {
     console.error('Erro ao registrar pedido:', e);
 
@@ -429,6 +570,9 @@ export default function PrimeLanches() {
     setCartOpen(false);
     setSentOrder(null);
     setForm({ name: '', phone: '', address: '', complement: '', notes: '' });
+    setPayment('pix');
+    setPrecisaTroco(null);
+    setTrocoValor('');
   };
 
   if (view === 'admin') {
@@ -494,9 +638,9 @@ export default function PrimeLanches() {
             fontFamily: FONT_DISPLAY, fontSize: 'clamp(38px, 6vw, 64px)', lineHeight: 0.95, margin: 0,
             background: 'linear-gradient(180deg, #ffe6a8, #f2b13a 60%, #c98f2c)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>O SABOR QUE<br />CONQUISTA.</h1>
+          }}>O SABOR QUE<br />PEGA FOGO.</h1>
           <p style={{ color: C.creamDim, fontSize: 16, lineHeight: 1.6, margin: '18px 0 26px', maxWidth: 440 }}>
-            PRIME LANCHES, O SABOR QUE CONQUISTA.
+            Burgers artesanais, blend na hora e molhos exclusivos. Monte seu pedido no site e confirme o pagamento direto com a loja.
           </p>
           <button onClick={() => scrollToCat('Combos')} style={{
             background: `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})`, color: C.cream, border: 'none',
@@ -677,7 +821,7 @@ export default function PrimeLanches() {
               {step === 'payment' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {PAYMENTS.map((p) => (
-                    <button key={p.id} onClick={() => setPayment(p.id)} style={{
+                    <button key={p.id} onClick={() => { setPayment(p.id); if (p.id !== 'cash') { setPrecisaTroco(null); setTrocoValor(''); } }} style={{
                       display: 'flex', alignItems: 'center', gap: 12, padding: '14px', borderRadius: 12, textAlign: 'left',
                       border: `1.5px solid ${payment === p.id ? C.gold : C.emberBorder}`,
                       background: payment === p.id ? 'rgba(242,177,58,0.1)' : 'transparent',
@@ -690,6 +834,47 @@ export default function PrimeLanches() {
                       {payment === p.id && <Check size={18} color={C.gold} />}
                     </button>
                   ))}
+
+                  {payment === 'cash' && (
+                    <div style={{ background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 12, padding: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>Precisa de troco?</div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: precisaTroco ? 10 : 0 }}>
+                        <button
+                          onClick={() => setPrecisaTroco(true)}
+                          style={{
+                            flex: 1, padding: '10px', borderRadius: 10, fontWeight: 700, fontSize: 13,
+                            border: `1.5px solid ${precisaTroco === true ? C.gold : C.emberBorder}`,
+                            background: precisaTroco === true ? 'rgba(242,177,58,0.1)' : 'transparent',
+                            color: C.cream,
+                          }}
+                        >Sim</button>
+                        <button
+                          onClick={() => { setPrecisaTroco(false); setTrocoValor(''); }}
+                          style={{
+                            flex: 1, padding: '10px', borderRadius: 10, fontWeight: 700, fontSize: 13,
+                            border: `1.5px solid ${precisaTroco === false ? C.gold : C.emberBorder}`,
+                            background: precisaTroco === false ? 'rgba(242,177,58,0.1)' : 'transparent',
+                            color: C.cream,
+                          }}
+                        >Não</button>
+                      </div>
+                      {precisaTroco === true && (
+                        <div>
+                          <div style={{ fontSize: 12, color: C.creamDim, marginBottom: 6 }}>Troco para quanto?</div>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            value={trocoValor}
+                            onChange={(e) => setTrocoValor(e.target.value)}
+                            placeholder="Ex: 50"
+                            style={{ width: '100%', background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 10, padding: '11px', color: C.cream, fontSize: 14 }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ fontSize: 11.5, color: C.creamDim, background: C.ember, border: `1px solid ${C.emberBorder}`, borderRadius: 10, padding: 10, display: 'flex', gap: 8 }}>
                     <MessageCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
                     <span>Ao confirmar, seu pedido é registrado no sistema da loja (com todos os itens e endereço). Você será direcionado ao WhatsApp só para confirmar a forma de pagamento.</span>
@@ -720,6 +905,14 @@ export default function PrimeLanches() {
                       <span>Total</span><span style={{ color: C.goldLight }}>{money(sentOrder.total)}</span>
                     </div>
                   </div>
+                  <AcompanharPedido
+                    orderId={sentOrder.id}
+                    onAtualizarStatus={(status) => {
+                      if (status === 'entregue' || status === 'cancelado') {
+                        localStorage.removeItem('pl_pedido_acompanhar');
+                      }
+                    }}
+                  />
                   <button onClick={startNewOrder} style={{ width: '100%', marginTop: 20, background: `linear-gradient(180deg, ${C.goldLight}, ${C.gold})`, color: C.charcoal, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5 }}>Fazer novo pedido</button>
                 </div>
               )}
@@ -743,7 +936,7 @@ export default function PrimeLanches() {
                     <button disabled={!canGoPayment} onClick={() => setStep('payment')} style={{ flex: 1, background: canGoPayment ? `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})` : C.emberBorder, color: canGoPayment ? C.cream : C.creamDim, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Ir para pagamento <ChevronRight size={16} /></button>
                   )}
                   {step === 'payment' && (
-                    <button onClick={confirmOrder} style={{ flex: 1, background: `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})`, color: C.cream, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <button disabled={!canConfirmOrder} onClick={confirmOrder} style={{ flex: 1, background: canConfirmOrder ? `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})` : C.emberBorder, color: canConfirmOrder ? C.cream : C.creamDim, border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: 14.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <Check size={16} /> Confirmar pedido
                     </button>
                   )}
@@ -1066,6 +1259,7 @@ function OrdersTab({ orders, loading, onRefresh, onStatus, pedidosNovosIds, onDe
       lines.push(`Endereço: ${order.customer?.address || ''}${order.customer?.complement ? `, ${order.customer.complement}` : ''}`);
     }
     lines.push(`Pagamento: ${order.payment_label || order.payment || ''}`);
+    if (order.customer?.troco) lines.push(`Troco: ${order.customer.troco}`);
     if (order.customer?.notes) lines.push(`Obs: ${order.customer.notes}`);
     return lines.join('\n');
   };
@@ -1131,6 +1325,9 @@ function OrdersTab({ orders, loading, onRefresh, onStatus, pedidosNovosIds, onDe
             <div><b style={{ color: C.cream }}>Telefone:</b> {order.customer?.phone}</div>
             {order.order_type === 'entrega' && <div><b style={{ color: C.cream }}>Endereço:</b> {order.customer?.address}{order.customer?.complement ? `, ${order.customer.complement}` : ''}</div>}
             <div><b style={{ color: C.cream }}>Pagamento:</b> {order.payment_label || order.payment}</div>
+            {order.customer?.troco && (
+              <div><b style={{ color: C.gold }}>Troco:</b> <span style={{ color: C.goldLight, fontWeight: 700 }}>{order.customer.troco}</span></div>
+            )}
             {order.customer?.notes && <div><b style={{ color: C.cream }}>Obs:</b> {order.customer.notes}</div>}
           </div>
 

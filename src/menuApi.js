@@ -166,6 +166,30 @@ export async function fetchOrdersParaRelatorio() {
   return data || [];
 }
 
+export async function fetchOrderById(id) {
+  const { data, error } = await supabase.from('orders').select('*').eq('id', id).single();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Assina atualizações de UM pedido específico — usado pela tela de
+ * acompanhamento do cliente. Chama onAtualizar(pedido) sempre que o
+ * status mudar (ex: a loja aceitou, colocou em preparo, etc).
+ */
+export function assinarPedido(orderId, onAtualizar) {
+  const canal = supabase
+    .channel(`pedido-${orderId}`)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+      (payload) => onAtualizar(payload.new)
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(canal);
+}
+
 /**
  * Assina o Realtime do Supabase para receber pedidos novos assim que
  * são gravados no banco — sem depender do polling de 8 em 8 segundos.

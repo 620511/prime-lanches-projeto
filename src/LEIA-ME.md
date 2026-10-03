@@ -1,43 +1,44 @@
-# JARVIS — excluir pedidos + relatório de vendas
+# Prime Lanches + JARVIS — pacote completo
 
-## 1) Por que não dava pra excluir pedido
+Esses três arquivos juntos têm tudo que já construímos até agora.
+Testei o build de produção de verdade com os três juntos antes de
+mandar — passou limpo.
 
-Faltavam duas coisas: a permissão no banco (Supabase) e o botão no
-painel. As duas foram adicionadas.
+## O que tem aqui
 
-### Rodar no Supabase primeiro
-No SQL Editor, rode o `supabase-add-delete-pedidos.sql`. Sem isso, o
-botão de excluir aparece mas dá erro (a política de segurança do
-banco ainda bloqueia o delete).
+- `App.jsx`
+- `menuApi.js`
+- `main.jsx` (esse é NOVO — a pasta src pode não ter esse arquivo
+  ainda, ou ter uma versão mais simples. Substitui mesmo assim.)
 
-### O que mudou no código
-- `menuApi.js`: nova função `deleteOrder(id)`
-- `App.jsx`: cada pedido no painel agora tem um botão de lixeira
-  🗑️ ao lado do botão do WhatsApp — clica, confirma, e some (do
-  painel e do banco).
+## Funcionalidades incluídas
 
-## 2) Relatório de vendas (dia / semana / mês)
-
-Apareceu um quadro **"📊 Relatório de vendas"** no painel, entre o
-código de acesso e a lista de pedidos, com três cartões:
-- **Hoje**
-- **Esta semana** (segunda a domingo)
-- **Este mês**
-
-Cada um mostra: faturamento, quantidade de pedidos e ticket médio.
-Pedidos cancelados não entram na conta.
-
-O JARVIS também responde isso pelo quadro "Perguntar ao JARVIS" (ou
-por voz), com perguntas tipo:
-- "quanto vendeu hoje" / "relatório do dia"
-- "vendas da semana"
-- "vendas do mês" / "faturamento do mês"
+- Cardápio, carrinho, checkout (como sempre)
+- Pedido salvo no Supabase antes do WhatsApp (WhatsApp só confirma
+  forma de pagamento)
+- Troco no pagamento em dinheiro (pergunta ao cliente)
+- Painel da loja (código 2030) com:
+  - Pedidos em tempo real, com som de alerta
+  - **🤖 Perguntar ao JARVIS** — texto ou voz, responde sobre
+    pedidos, status, faturamento (dia/semana/mês), produto mais
+    pedido
+  - 📊 Relatório de vendas (dia/semana/mês)
+  - Botão de excluir pedido
+- Acompanhamento de pedido pelo cliente (tela "Pedido enviado")
+  em tempo real, com fala quando o status muda
+- Proteção geral contra tela branca (`main.jsx`) — se algo der
+  erro, aparece um aviso com botão de recarregar, em vez de
+  sumir tudo
 
 ## Como aplicar
 
-1. Rode o `supabase-add-delete-pedidos.sql` no Supabase.
-2. Substitua `src/App.jsx` e `src/menuApi.js` pelos deste pacote.
-3. `npm run dev`, entra na Área da loja (2030), confere:
-   - O quadro de relatório aparece com os números certos
-   - O botão de lixeira exclui um pedido de teste
-   - Pergunta "quanto vendeu hoje" pro JARVIS
+1. Substitui os **três** arquivos dentro de `src/` pelos deste
+   pacote (confirma que ficou só um `main.jsx` na pasta).
+2. Se ainda não rodou, roda no Supabase:
+   - `supabase-setup.sql` (base: menu + orders)
+   - `supabase-setup-jarvis.sql` (Realtime + jarvis_events)
+   - `supabase-add-delete-pedidos.sql` (permissão de excluir)
+3. `npm install` (se for um ambiente novo) e `npm run dev`
+4. Testa: pedido completo, Área da loja, pergunta pro JARVIS,
+   excluir um pedido de teste, relatório de vendas
+5. Funcionando, `git add . / commit -m "..." / git push`
