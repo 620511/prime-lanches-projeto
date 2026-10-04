@@ -654,9 +654,9 @@ export default function PrimeLanches() {
             fontFamily: FONT_DISPLAY, fontSize: 'clamp(38px, 6vw, 64px)', lineHeight: 0.95, margin: 0,
             background: 'linear-gradient(180deg, #ffe6a8, #f2b13a 60%, #c98f2c)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>O SABOR QUE<br />PEGA FOGO.</h1>
+          }}>O SABOR QUE<br />conquista.</h1>
           <p style={{ color: C.creamDim, fontSize: 16, lineHeight: 1.6, margin: '18px 0 26px', maxWidth: 440 }}>
-            Burgers artesanais, blend na hora e molhos exclusivos. Monte seu pedido no site e confirme o pagamento direto com a loja.
+            PRIME LANCHES, O SABOR QUE CONQUISTA.
           </p>
           <button onClick={() => scrollToCat('Combos')} style={{
             background: `linear-gradient(180deg, ${C.redGlow}, ${C.redDark})`, color: C.cream, border: 'none',
