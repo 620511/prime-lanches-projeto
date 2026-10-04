@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   fetchMenu, addMenuItem, updateMenuItem, deleteMenuItem, uploadMenuImage,
   createOrder, fetchOrders, updateOrderStatus, assinarNovosPedidos,
-  deleteOrder, fetchOrdersParaRelatorio, fetchOrderById, assinarPedido
+  deleteOrder, fetchOrdersParaRelatorio, fetchOrderById, assinarPedido,
+  fetchOrdersPorPeriodo
 } from './menuApi.js';
 import {
   Flame, ShoppingBag, Plus, Minus, X, MapPin, Clock, Banknote,
@@ -226,6 +227,10 @@ function responderPerguntaJarvis(perguntaOriginal, orders, relatorio) {
     const r = relatorio.mes;
     return `Neste mês: ${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}, faturamento de ${valorFalado(r.total)}, ticket médio de ${valorFalado(r.ticketMedio)}.`;
   }
+  if (relatorio && (p.includes('venda') || p.includes('faturamento') || p.includes('relatorio')) && (p.includes('ano') || p.includes('anual'))) {
+    const r = relatorio.ano;
+    return `Neste ano: ${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}, faturamento de ${valorFalado(r.total)}, ticket médio de ${valorFalado(r.ticketMedio)}.`;
+  }
   if (p.includes('quantos pedidos') || p.includes('quantidade de pedidos')) {
     return `Você tem ${orders.length} pedidos registrados.`;
   }
@@ -267,7 +272,7 @@ function responderPerguntaJarvis(perguntaOriginal, orders, relatorio) {
     return `O maior pedido é o número ${maior.number}, do cliente ${maior.customer?.name || 'não identificado'}, no valor de ${valorFalado(maior.total)}.`;
   }
 
-  return 'Ainda só respondo sobre quantidade de pedidos, faturamento, status (pendente, em preparo, pronto, entregue, cancelado), produto mais pedido e maior pedido. Pergunte também sobre vendas de hoje, da semana ou do mês.';
+  return 'Ainda só respondo sobre quantidade de pedidos, faturamento, status (pendente, em preparo, pronto, entregue, cancelado), produto mais pedido e maior pedido. Pergunte também sobre vendas de hoje, da semana, do mês ou do ano.';
 }
 
 /* ---------------------------------------------------------------- */
@@ -294,27 +299,38 @@ function inicioDoMes(d) {
   return x;
 }
 
-/* Vendas = pedidos que não foram cancelados. Cancelado não conta
-   como venda, nem no faturamento nem na contagem. */
+function inicioDoAno(d) {
+  const x = new Date(d.getFullYear(), 0, 1);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+/* Resumo de um conjunto de pedidos: quantidade, faturamento e ticket
+   médio. Cancelado não conta como venda — nem no faturamento, nem na
+   contagem. Reutilizado pelo dashboard (dia/semana/mês/ano) e pela
+   consulta avulsa de período. */
+function resumoDePedidos(lista) {
+  const validos = lista.filter((o) => o.status !== 'cancelado');
+  const total = validos.reduce((s, o) => s + Number(o.total || 0), 0);
+  return {
+    pedidos: validos.length,
+    total,
+    ticketMedio: validos.length ? total / validos.length : 0,
+  };
+}
+
 function calcularRelatorioVendas(orders) {
   const agora = new Date();
   const iniDia = inicioDoDia(agora);
   const iniSemana = inicioDaSemana(agora);
   const iniMes = inicioDoMes(agora);
-
-  const validos = orders.filter((o) => o.status !== 'cancelado');
-  const soma = (lista) => lista.reduce((s, o) => s + Number(o.total || 0), 0);
-
-  const montar = (lista) => ({
-    pedidos: lista.length,
-    total: soma(lista),
-    ticketMedio: lista.length ? soma(lista) / lista.length : 0,
-  });
+  const iniAno = inicioDoAno(agora);
 
   return {
-    dia: montar(validos.filter((o) => new Date(o.created_at) >= iniDia)),
-    semana: montar(validos.filter((o) => new Date(o.created_at) >= iniSemana)),
-    mes: montar(validos.filter((o) => new Date(o.created_at) >= iniMes)),
+    dia: resumoDePedidos(orders.filter((o) => new Date(o.created_at) >= iniDia)),
+    semana: resumoDePedidos(orders.filter((o) => new Date(o.created_at) >= iniSemana)),
+    mes: resumoDePedidos(orders.filter((o) => new Date(o.created_at) >= iniMes)),
+    ano: resumoDePedidos(orders.filter((o) => new Date(o.created_at) >= iniAno)),
   };
 }
 
@@ -1134,6 +1150,7 @@ function RelatorioVendas({ relatorio, onRefresh }) {
     { label: 'Hoje', dados: relatorio.dia },
     { label: 'Esta semana', dados: relatorio.semana },
     { label: 'Este mês', dados: relatorio.mes },
+    { label: 'Este ano', dados: relatorio.ano },
   ];
 
   return (
@@ -1158,6 +1175,106 @@ function RelatorioVendas({ relatorio, onRefresh }) {
       <div style={{ fontSize: 10.5, color: C.creamDim, marginTop: 6, opacity: 0.7 }}>
         Pedidos cancelados não entram na contagem. Semana considera de segunda a domingo.
       </div>
+      <ConsultarPeriodo />
+    </div>
+  );
+}
+
+function ConsultarPeriodo() {
+  const [tipo, setTipo] = useState('dia'); // dia | mes | ano
+  const [dia, setDia] = useState('');
+  const [mes, setMes] = useState(''); // formato YYYY-MM
+  const [ano, setAno] = useState(String(new Date().getFullYear()));
+  const [resultado, setResultado] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const consultar = async () => {
+    setErro('');
+    setResultado(null);
+    let inicio, fim, label;
+
+    if (tipo === 'dia') {
+      if (!dia) { setErro('Escolha uma data.'); return; }
+      inicio = new Date(dia + 'T00:00:00');
+      fim = new Date(inicio);
+      fim.setDate(fim.getDate() + 1);
+      label = inicio.toLocaleDateString('pt-BR');
+    } else if (tipo === 'mes') {
+      if (!mes) { setErro('Escolha um mês.'); return; }
+      const [anoStr, mesStr] = mes.split('-');
+      inicio = new Date(Number(anoStr), Number(mesStr) - 1, 1);
+      fim = new Date(Number(anoStr), Number(mesStr), 1);
+      label = inicio.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    } else {
+      if (!ano || ano.length !== 4) { setErro('Escolha um ano válido (ex: 2026).'); return; }
+      inicio = new Date(Number(ano), 0, 1);
+      fim = new Date(Number(ano) + 1, 0, 1);
+      label = ano;
+    }
+
+    setCarregando(true);
+    try {
+      const pedidos = await fetchOrdersPorPeriodo(inicio.toISOString(), fim.toISOString());
+      setResultado({ label, ...resumoDePedidos(pedidos) });
+    } catch (e) {
+      console.error('Erro ao consultar período:', e);
+      setErro('Não foi possível consultar agora. Tenta de novo.');
+    }
+    setCarregando(false);
+  };
+
+  return (
+    <div style={{ marginTop: 14, borderTop: `1px solid ${C.emberBorder}`, paddingTop: 14 }}>
+      <div style={{ fontSize: 12.5, color: C.goldLight, fontWeight: 700, marginBottom: 8 }}>🔎 Consultar outro período</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+        {[['dia', 'Dia'], ['mes', 'Mês'], ['ano', 'Ano']].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => { setTipo(id); setResultado(null); setErro(''); }}
+            style={{
+              padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: `1px solid ${tipo === id ? C.gold : C.emberBorder}`,
+              background: tipo === id ? 'rgba(242,177,58,0.12)' : 'transparent',
+              color: C.cream,
+            }}
+          >{label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {tipo === 'dia' && (
+          <input
+            type="date" value={dia} onChange={(e) => setDia(e.target.value)}
+            style={{ background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '8px 10px', color: C.cream, fontSize: 13 }}
+          />
+        )}
+        {tipo === 'mes' && (
+          <input
+            type="month" value={mes} onChange={(e) => setMes(e.target.value)}
+            style={{ background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '8px 10px', color: C.cream, fontSize: 13 }}
+          />
+        )}
+        {tipo === 'ano' && (
+          <input
+            type="number" value={ano} onChange={(e) => setAno(e.target.value)} placeholder="2026"
+            style={{ width: 100, background: C.void, border: `1px solid ${C.emberBorder}`, borderRadius: 8, padding: '8px 10px', color: C.cream, fontSize: 13 }}
+          />
+        )}
+        <button
+          onClick={consultar} disabled={carregando}
+          style={{ background: C.gold, color: C.charcoal, border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}
+        >{carregando ? 'Consultando...' : 'Consultar'}</button>
+      </div>
+      {erro && <div style={{ color: C.redGlow, fontSize: 12, marginTop: 6 }}>{erro}</div>}
+      {resultado && (
+        <div style={{ marginTop: 10, background: C.void, borderRadius: 10, padding: 12 }}>
+          <div style={{ fontSize: 12, color: C.creamDim, marginBottom: 4, textTransform: 'capitalize' }}>{resultado.label}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.goldLight }}>{money(resultado.total)}</div>
+          <div style={{ fontSize: 11.5, color: C.creamDim, marginTop: 2 }}>
+            {resultado.pedidos} pedido{resultado.pedidos === 1 ? '' : 's'} · ticket médio {money(resultado.ticketMedio)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

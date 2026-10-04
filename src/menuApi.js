@@ -151,16 +151,34 @@ export async function deleteOrder(id) {
  * loja com bastante movimento).
  */
 export async function fetchOrdersParaRelatorio() {
-  const inicioMes = new Date();
-  inicioMes.setDate(1);
-  inicioMes.setHours(0, 0, 0, 0);
+  const inicioAno = new Date();
+  inicioAno.setMonth(0, 1);
+  inicioAno.setHours(0, 0, 0, 0);
 
   const { data, error } = await supabase
     .from('orders')
     .select('id, number, created_at, total, status')
-    .gte('created_at', inicioMes.toISOString())
+    .gte('created_at', inicioAno.toISOString())
     .order('created_at', { ascending: false })
-    .limit(2000);
+    .limit(5000);
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Busca pedidos num período específico (dia, mês ou ano escolhido pelo
+ * lojista) — usado pela consulta avulsa do relatório, independente do
+ * ano corrente que o fetchOrdersParaRelatorio cobre.
+ */
+export async function fetchOrdersPorPeriodo(inicioISO, fimISO) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, number, created_at, total, status')
+    .gte('created_at', inicioISO)
+    .lt('created_at', fimISO)
+    .order('created_at', { ascending: false })
+    .limit(5000);
 
   if (error) throw error;
   return data || [];

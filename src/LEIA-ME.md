@@ -1,44 +1,38 @@
-# Prime Lanches + JARVIS — pacote completo
+# Relatório de vendas completo — dia/semana/mês/ano + consulta de período
 
-Esses três arquivos juntos têm tudo que já construímos até agora.
-Testei o build de produção de verdade com os três juntos antes de
-mandar — passou limpo.
+## O que mudou
 
-## O que tem aqui
+1. **Apareceu o cartão "Este ano"** ao lado de Hoje/Esta semana/Este mês.
 
-- `App.jsx`
-- `menuApi.js`
-- `main.jsx` (esse é NOVO — a pasta src pode não ter esse arquivo
-  ainda, ou ter uma versão mais simples. Substitui mesmo assim.)
+2. **Nova seção "🔎 Consultar outro período"**, logo abaixo dos
+   cartões, no mesmo quadro de relatório. Você escolhe:
+   - **Dia** — um calendário pra escolher a data exata
+   - **Mês** — escolhe mês e ano
+   - **Ano** — digita o ano (ex: 2025, 2024...)
 
-## Funcionalidades incluídas
+   Clica em "Consultar" e aparece: faturamento, quantidade de
+   pedidos e ticket médio **daquele período específico** — inclusive
+   de meses/anos passados, não só do período atual.
 
-- Cardápio, carrinho, checkout (como sempre)
-- Pedido salvo no Supabase antes do WhatsApp (WhatsApp só confirma
-  forma de pagamento)
-- Troco no pagamento em dinheiro (pergunta ao cliente)
-- Painel da loja (código 2030) com:
-  - Pedidos em tempo real, com som de alerta
-  - **🤖 Perguntar ao JARVIS** — texto ou voz, responde sobre
-    pedidos, status, faturamento (dia/semana/mês), produto mais
-    pedido
-  - 📊 Relatório de vendas (dia/semana/mês)
-  - Botão de excluir pedido
-- Acompanhamento de pedido pelo cliente (tela "Pedido enviado")
-  em tempo real, com fala quando o status muda
-- Proteção geral contra tela branca (`main.jsx`) — se algo der
-  erro, aparece um aviso com botão de recarregar, em vez de
-  sumir tudo
+3. **O JARVIS também entende isso por voz/texto agora**: pergunta
+   "quanto vendeu esse ano" ou "faturamento anual" que ele responde.
+   (A consulta de uma data específica passada, tipo "quanto vendi em
+   março", ainda não dá pra perguntar por voz — isso é feito pelos
+   seletores de Dia/Mês/Ano no relatório mesmo.)
+
+## Por que criei uma busca separada pra isso
+
+O relatório do dia a dia (cartões de cima) só carrega dados do ano
+atual pra não pesar o site toda hora. Já a consulta de período busca
+direto no banco, sob demanda, então funciona pra qualquer data, mesmo
+de anos anteriores — sem deixar o carregamento do painel mais lento
+no dia a dia.
 
 ## Como aplicar
 
-1. Substitui os **três** arquivos dentro de `src/` pelos deste
-   pacote (confirma que ficou só um `main.jsx` na pasta).
-2. Se ainda não rodou, roda no Supabase:
-   - `supabase-setup.sql` (base: menu + orders)
-   - `supabase-setup-jarvis.sql` (Realtime + jarvis_events)
-   - `supabase-add-delete-pedidos.sql` (permissão de excluir)
-3. `npm install` (se for um ambiente novo) e `npm run dev`
-4. Testa: pedido completo, Área da loja, pergunta pro JARVIS,
-   excluir um pedido de teste, relatório de vendas
-5. Funcionando, `git add . / commit -m "..." / git push`
+1. Substitui `src/App.jsx` e `src/menuApi.js` pelos deste pacote
+   (o `main.jsx` da proteção contra tela branca continua o mesmo,
+   não precisa trocar de novo).
+2. `npm run dev`, entra na Área da loja, testa o relatório e a
+   consulta por período.
+3. Funcionando, `git add . / commit / push`.
